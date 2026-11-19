@@ -1,0 +1,86 @@
+@startuml
+' Modello di Dominio - VOLTAGYM
+' Ricostruzione modificabile del diagramma grafico approvato.
+' PlantUML calcola automaticamente la disposizione dei riquadri.
+
+skinparam backgroundColor #FFFFFF
+skinparam shadowing false
+skinparam defaultFontName "DejaVu Serif"
+skinparam defaultFontSize 15
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam roundcorner 0
+skinparam ArrowColor #111111
+skinparam class {
+  BackgroundColor #F6F6F6
+  BorderColor #111111
+  FontColor #111111
+  ArrowColor #111111
+}
+hide empty methods
+hide circle
+
+title Modello di Dominio - VOLTAGYM
+
+class Collegiale {
+  - email : String
+  - matricola : String
+}
+class Prenotazione {
+  - id : int
+  - dataPrenotazione : Date
+  - oraInizio : Time
+  - oraFine : Time
+  - palestra : String
+  - modalita : String
+}
+class Palestra {
+  - nome : String
+  - valori : {Secchi, Spessi}
+}
+class FasciaOraria {
+  - data : Date
+  - oraInizio : Time
+  - oraFine : Time
+}
+class Partecipazione {
+  - idPrenotazione : int
+  - emailCollegiale : String
+}
+class ModalitaAllenamento {
+  - valori : {INDIVIDUALE, GRUPPO}
+}
+class RichiestaAvviso {
+  - id : int
+  - data : Date
+  - palestra : String
+  - oraInizio : Time
+  - oraFine : Time
+  - stato : String
+}
+class Notifica {
+  - id : int
+  - messaggio : String
+  - dataCreazione : Date
+  - dataLettura : Date
+}
+
+' Associazioni e molteplicità mostrate nell'immagine approvata
+Collegiale "1" --> "0..*" Prenotazione : organizza
+Prenotazione "0..*" --> "1" Palestra : è per
+Prenotazione "0..*" --> "1" FasciaOraria : occupa
+Prenotazione "1" --> "1..4" Partecipazione : comprende
+Collegiale "1" --> "0..*" Partecipazione : partecipa
+Collegiale "1" --> "0..*" RichiestaAvviso : richiede
+Collegiale "1" --> "0..*" Notifica : riceve
+RichiestaAvviso "0..*" --> "1" FasciaOraria : riguarda
+ModalitaAllenamento "1" --> "0..*" Prenotazione : determina
+
+' Indicazioni di ordine (solo per la resa del layout)
+Collegiale -[hidden]right- Prenotazione
+Prenotazione -[hidden]right- Palestra
+Palestra -[hidden]down- FasciaOraria
+Prenotazione -[hidden]down- Partecipazione
+Partecipazione -[hidden]down- RichiestaAvviso
+RichiestaAvviso -[hidden]left- Notifica
+@enduml

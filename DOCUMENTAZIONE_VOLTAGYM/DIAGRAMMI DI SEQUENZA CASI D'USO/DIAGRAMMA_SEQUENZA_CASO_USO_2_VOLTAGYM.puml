@@ -1,0 +1,154 @@
+@startuml
+!pragma teoz true
+title VOLTAGYM - Diagramma di sequenza\nCaso d'uso 2: lista d'attesa e avviso di slot liberato
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam sequence {
+ ArrowColor #244A77
+ LifeLineBorderColor #71859D
+ ParticipantBorderColor #244A77
+ ParticipantBackgroundColor #E8EFF7
+ ActorBorderColor #244A77
+ GroupBorderColor #8097AF
+ GroupBackgroundColor #F4F7FB
+}
+autonumber
+actor "Collegiale\ninteressato" as U
+boundary "CalendarView\n(interessato)" as V
+control "CalendarController\n(interessato)" as C
+control "ReservationService" as S
+control "GymScheduleService" as G
+control "WaitlistService\n(Observer)" as W
+database "SQLite\n(voltagym.db)" as DB
+actor "Organizzatore\nprenotazione esistente" as O
+boundary "CalendarView\n(organizzatore)" as VO
+control "CalendarController\n(organizzatore)" as CO
+entity "SqliteReservationRepository" as R
+
+== A. Richiesta di avviso ==
+U -> V: Preme Lista d'attesa
+V -> C: evento waitlistButton -> joinWaitlist()
+C -> G: getAvailableSlots(data, durata)
+G --> C: tutti gli slot ammessi
+C -> S: getAvailableSlots(email, palestra, data, durata)
+S -> R: findForGymAndDate(palestra, data)
+R -> DB: SELECT prenotazioni della palestra
+DB --> R: intervalli prenotati
+R --> S: prenotazioni
+S -> R: findByStudent(email)
+R -> DB: SELECT prenotazioni del collegiale
+DB --> R: elenco
+R --> S: elenco
+S -> G: getAvailableSlots(data, durata)
+G --> S: slot teorici
+S --> C: slot liberi (o lista vuota se prenotato)
+C -> C: occupied = all - free
+alt Nessuno slot occupato selezionabile
+  C -> V: Messaggio "Non ci sono slot occupati"
+else Almeno uno slot occupato
+  C -> V: chooseWaitlistSlot(occupied)
+  V -> U: Mostra slot da scegliere
+  alt Scelta annullata
+    U --> V: Annulla
+    V --> C: null
+  else Slot scelto
+    U --> V: Slot richiesto
+    V --> C: TimeSlot
+    C -> W: join(email, palestra, data, slot)
+    W -> G: isBookingWindowOpen(data, now), orari
+    G --> W: validita' temporale
+    alt Data/orario/durata non validi
+      W --> C: Eccezione
+      C -> V: Avviso di errore
+    else Validi
+      W -> DB: BEGIN TRANSACTION
+      W -> DB: SELECT prenotazioni del collegiale per data
+      DB --> W: presente / assente
+      W -> DB: SELECT conflitti nella palestra e nello slot
+      DB --> W: occupato / libero
+      alt Collegiale gia' prenotato o slot libero
+        W -> DB: ROLLBACK
+        W --> C: Eccezione
+        C -> V: Avviso di errore
+      else Slot occupato e utente idoneo
+        W -> DB: INSERT INTO waitlist (...) ON CONFLICT UPDATE state='WAITING'
+        W -> DB: COMMIT
+        W --> C: OK
+        C -> V: Conferma iscrizione alla lista d'attesa
+      end
+    end
+  end
+end
+
+== B. Cancellazione e notifica (Observer) ==
+O -> VO: Seleziona prenotazione e conferma annullamento
+VO -> CO: evento myBookingsButton -> manageBookings()
+CO -> S: cancel(id, email organizzatore)
+S -> R: cancel(id, email organizzatore)
+R -> DB: BEGIN TRANSACTION
+R -> DB: SELECT prenotazione WHERE id e organizzatore
+DB --> R: prenotazione / nessuna
+R -> DB: DELETE FROM reservations WHERE id e organizzatore
+DB --> R: count (0/1)
+alt Annullamento non autorizzato o non trovato
+  R -> DB: COMMIT (nessuna modifica)
+  R --> S: false
+  S --> CO: false
+  CO -> VO: Messaggio impossibile annullare
+else Annullamento riuscito
+  R -> DB: DELETE FROM reservation_participants WHERE reservation_id=id
+  R -> W: onSlotFreed(connessione, prenotazione cancellata)
+  note right of W
+    Callback dell'interfaccia SlotAvailabilityObserver,
+    eseguita nella stessa transazione di cancellazione.
+  end note
+  W -> DB: SELECT richieste WAITING sovrapposte
+  DB --> W: richieste candidate
+  loop Per ogni richiesta in attesa
+    W -> W: Verifica che la data sia domani
+    W -> DB: SELECT altre prenotazioni sovrapposte allo slot richiesto
+    DB --> W: occupato / libero
+    W -> DB: SELECT prenotazione giornaliera del richiedente
+    DB --> W: presente / assente
+    alt Intervallo interamente libero e collegiale idoneo
+      W -> DB: INSERT INTO notifications(student_email, message)
+      W -> DB: UPDATE waitlist SET state='NOTIFIED'
+    else Non idoneo o intervallo ancora occupato
+      note right of W: Nessuna notifica per questa richiesta.
+    end
+  end
+  W --> R: ritorno dalla callback
+  R -> DB: COMMIT
+  R --> S: true
+  S --> CO: true
+  CO -> VO: Conferma annullamento e refresh()
+end
+
+== C. Lettura e visualizzazione dell'avviso ==
+note over C,V
+showNotifications() viene invocato all'apertura del CalendarController,
+tramite il pulsante dedicato e dal Timer Swing ogni 15 secondi.
+end note
+C -> W: unread(email interessato)
+W -> DB: BEGIN TRANSACTION
+W -> DB: SELECT notifications WHERE read_at IS NULL
+DB --> W: messaggi non letti
+loop Per ogni notifica letta
+  W -> DB: UPDATE notifications SET read_at=CURRENT_TIMESTAMP
+end
+W -> DB: COMMIT
+W --> C: List<String> messaggi
+alt Messaggi presenti
+  C -> V: JOptionPane "VOLTA GYM - Slot libero!"
+  V -> U: Mostra avviso
+  C -> S: getAvailableSlots(...)
+  S --> C: disponibilita' aggiornata
+  C -> V: showSlots(...)
+else Nessun messaggio
+  note over C: Nessun popup.
+end
+note over U,DB
+L'avviso NON assegna lo slot: l'utente deve prenotarlo separatamente,
+con i normali controlli di disponibilita' e limite giornaliero.
+end note
+@enduml

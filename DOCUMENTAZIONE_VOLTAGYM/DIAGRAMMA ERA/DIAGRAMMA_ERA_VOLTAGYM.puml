@@ -1,0 +1,137 @@
+@startuml
+' DIAGRAMMA ERA | VOLTAGYM
+' Dominio delle prenotazioni - comprensivo dei casi d''uso 1 e 2
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam linetype ortho
+skinparam roundcorner 12
+skinparam packageStyle rectangle
+skinparam rectangle {
+  BorderColor #244a84
+  FontColor #16345f
+  BackgroundColor #ffffff
+}
+skinparam note {
+  BorderColor #244a84
+  FontColor #16345f
+  BackgroundColor #ffffff
+}
+skinparam ArrowColor #244a84
+skinparam ArrowThickness 1.4
+skinparam class {
+  BorderColor #244a84
+  FontColor #16345f
+  BackgroundColor #ffffff
+  HeaderBackgroundColor #5a7eb6
+}
+
+title <size:22><b>DIAGRAMMA ERA | VOLTAGYM</b></size>\n<size:16>Dominio delle prenotazioni - comprensivo dei casi d'uso 1 e 2</size>
+
+class "COLLEGIALE" as Collegiale <<entity>> {
+  + email : TEXT <<PK>>
+  --
+  matricola : TEXT <<UNIQUE>>
+}
+
+class "PRENOTAZIONE" as Prenotazione <<entity>> {
+  + id : INTEGER <<PK>>
+  --
+  student_email : TEXT <<FK>>
+  gym : SECCHI | SPESSI
+  booking_date : DATE
+  start_time : TIME
+  end_time : TIME
+  mode : INDIVIDUAL | GROUP
+  created_at : TIMESTAMP
+}
+
+class "PARTECIPAZIONE" as Partecipazione <<entity>> {
+  + reservation_id : INTEGER <<PK, FK>>
+  + student_email : TEXT <<PK, FK>>
+}
+
+class "RICHIESTA_AVVISO" as RichiestaAvviso <<entity>> {
+  + id : INTEGER <<PK>>
+  --
+  student_email : TEXT <<FK>>
+  gym : SECCHI | SPESSI
+  booking_date : DATE
+  start_time : TIME
+  end_time : TIME
+  state : WAITING | NOTIFIED
+  created_at : TIMESTAMP
+}
+
+class "NOTIFICA" as Notifica <<entity>> {
+  + id : INTEGER <<PK>>
+  --
+  student_email : TEXT <<FK>>
+  message : TEXT
+  created_at : TIMESTAMP
+  read_at : TIMESTAMP <<NULL>>
+}
+
+class "PALESTRA" as Palestra <<concetto>> {
+  codice : SECCHI | SPESSI
+  --
+  nome : Secchi | Spessi
+  Entità concettuale (enum Gym)
+}
+
+class "FASCIA_ORARIA" as FasciaOraria <<concetto>> {
+  palestra + data + inizio + fine
+  --
+  data : DATE
+  ora_inizio : TIME
+  ora_fine : TIME
+  Valore temporale concettuale
+}
+
+hide circle
+
+Palestra "1" -- "0..N" FasciaOraria : contiene
+Collegiale "1" -- "0..N" Prenotazione : organizza
+Prenotazione "1" -- "1..4" Partecipazione : include
+Collegiale "1" -- "0..N" Partecipazione : partecipa
+Collegiale "1" -- "0..N" RichiestaAvviso : richiede
+Collegiale "1" -- "0..N" Notifica : riceve
+
+FasciaOraria .. Prenotazione : intervallo prenotato
+FasciaOraria .. RichiestaAvviso : intervallo richiesto
+Partecipazione .. Notifica : può generare
+RichiestaAvviso .. Notifica : 0..1
+
+note right of Notifica
+LEGENDA E VINCOLI
+
+Blu = dati persistenti nel DB;
+ocra = concetti di dominio,
+non tabelle autonome.
+
+Relazione tratteggiata = associazione
+concettuale, non FK nel database.
+
+Ogni prenotazione: 1 partecipante
+(individuale) oppure 2-4 (gruppo),
+incluso l'organizzatore.
+
+Ogni collegiale: massimo 1
+prenotazione per data tra
+entrambe le palestre.
+
+Solo il giorno successivo,
+con apertura prenotazioni alle 07:00;
+durata 30-120 minuti.
+
+Intervalli sovrapposti nella stessa
+palestra non sono prenotabili
+simultaneamente.
+
+La notifica nasce da controllo
+applicativo dopo cancellazione:
+non esiste FK richiesta→notifica.
+end note
+
+@enduml

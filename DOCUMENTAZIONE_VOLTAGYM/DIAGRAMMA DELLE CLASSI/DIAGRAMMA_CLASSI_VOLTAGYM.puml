@@ -1,0 +1,209 @@
+@startuml
+title Diagramma delle Classi - VOLTAGYM
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #222222
+skinparam classArrowColor #222222
+skinparam packageBorderColor #222222
+skinparam packageBackgroundColor #FFFFFF
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+left to right direction
+hide empty members
+package "it.voltagym" {
+  class Main {
+    + main(args: String[*]): void
+  }
+}
+package "it.voltagym.controller" {
+  class AppController {
+    - view: LoginView
+    - service: GymService
+    - login(): void
+  }
+  class GymSelectionController {
+    - view: GymSelectionView
+    - select(gym: Gym): void
+  }
+  class CalendarController {
+    - view: CalendarView
+    - reservations: ReservationService
+    - waitlist: WaitlistService
+    - schedule: GymScheduleService
+    - refresh(): void
+    - book(): void
+    - manageBookings(): void
+    - joinWaitlist(): void
+    - showNotifications(): void
+  }
+}
+package "it.voltagym.view" {
+  class LoginView {
+    - emailField: JTextField
+    - matricolaField: JTextField
+    + getEmail(): String
+    + getMatricola(): String
+    + addLoginListener(listener): void
+    + showError(message): void
+  }
+  class GymSelectionView {
+    - email: String
+    + getEmail(): String
+    + addSecchiListener(listener): void
+    + addSpessiListener(listener): void
+  }
+  class CalendarView {
+    - email: String
+    - gym: Gym
+    - selectedDate: LocalDate
+    + getSelectedSlot(): TimeSlot
+    + getSelectedMode(): TrainingMode
+    + chooseWaitlistSlot(slots): TimeSlot
+    + chooseReservation(...): ReservationChoice
+    + showSlots(slots): void
+    + showBookingSuccess(slot): void
+  }
+  class VoltaTheme {
+    + BG: Color
+    + CARD: Color
+    + ACCENT: Color
+    + CREDITS: String
+    + credits(): JLabel
+  }
+}
+package "it.voltagym.model" {
+  class Student {
+    - email: String
+    - matricola: String
+    + getEmail(): String
+    + getMatricola(): String
+  }
+  class Reservation {
+    + id: long
+    + studentEmail: String
+    + gym: Gym
+    + date: LocalDate
+    + start: LocalTime
+    + end: LocalTime
+    + mode: TrainingMode
+  }
+  class TimeSlot {
+    + start: LocalTime
+    + end: LocalTime
+  }
+  enum Gym {
+    SECCHI
+    SPESSI
+    + getDisplayName(): String
+  }
+  enum TrainingMode {
+    INDIVIDUAL
+    GROUP
+  }
+  class GymService {
+    - repository: StudentRepository
+    + authenticate(email, matricola): Optional~Student~
+  }
+  class GymScheduleService {
+    + getAvailableSlots(date, duration): List~TimeSlot~
+    + isBookingWindowOpen(date, now): boolean
+    + getOpeningTime(): LocalTime
+    + getClosingTime(): LocalTime
+  }
+  class ReservationService {
+    - repository: ReservationRepository
+    - schedule: GymScheduleService
+    + getAvailableSlots(email, gym, date, duration): List~TimeSlot~
+    + getMyReservations(email): List~Reservation~
+    + cancel(id, email): boolean
+    + book(email, gym, date, slot, mode, participants): Reservation
+  }
+  class WaitlistService {
+    - schedule: GymScheduleService
+    + join(email, gym, date, slot): void
+    + unread(email): List~String~
+    + onSlotFreed(connection, reservation): void
+  }
+  class Database {
+    + getConnection(): Connection
+    + initialize(): void
+  }
+  interface StudentRepository {
+    + findByEmailAndMatricola(email, matricola): Optional~Student~
+  }
+  class SqliteStudentRepository {
+    + findByEmailAndMatricola(email, matricola): Optional~Student~
+  }
+  interface ReservationRepository {
+    + findForGymAndDate(gym, date): List~Reservation~
+    + findByStudent(email): List~Reservation~
+    + create(reservation, participants): Reservation
+    + cancel(id, email): boolean
+    + allStudentEmails(): List~String~
+  }
+  class SqliteReservationRepository {
+    + findForGymAndDate(gym, date): List~Reservation~
+    + findByStudent(email): List~Reservation~
+    + create(reservation, participants): Reservation
+    + cancel(id, email): boolean
+  }
+  interface BookingStrategy {
+    + validate(participantCount: int): void
+  }
+  class IndividualBookingStrategy {
+    + validate(participantCount: int): void
+  }
+  class GroupBookingStrategy {
+    + CAPACITY: int = 4
+    + validate(participantCount: int): void
+  }
+  interface SlotAvailabilityObserver {
+    + onSlotFreed(connection, reservation): void
+  }
+}
+StudentRepository <|.. SqliteStudentRepository
+ReservationRepository <|.. SqliteReservationRepository
+BookingStrategy <|.. IndividualBookingStrategy
+BookingStrategy <|.. GroupBookingStrategy
+SlotAvailabilityObserver <|.. WaitlistService
+Main ..> AppController : uses
+Main ..> Database : initialize
+AppController ..> LoginView : view
+AppController ..> GymService : service
+AppController ..> GymSelectionController : creates
+GymSelectionController ..> GymSelectionView : view
+GymSelectionController ..> CalendarController : creates
+GymSelectionController ..> GymScheduleService : creates
+GymSelectionController ..> ReservationService : creates
+GymSelectionController ..> SqliteReservationRepository : creates
+CalendarController ..> CalendarView : view
+CalendarController ..> ReservationService : reservations
+CalendarController ..> WaitlistService : waitlist
+CalendarController ..> GymScheduleService : schedule
+CalendarController ..> GymSelectionController : creates
+LoginView ..> VoltaTheme : theme
+GymSelectionView ..> VoltaTheme : theme
+CalendarView ..> VoltaTheme : theme
+CalendarView ..> TrainingMode : mode
+CalendarView ..> Gym : gym
+CalendarView ..> TimeSlot : slots
+GymService ..> StudentRepository : repository
+GymService ..> Student : returns
+SqliteStudentRepository ..> Student : reads
+SqliteStudentRepository ..> Database : SQL
+ReservationService ..> ReservationRepository : repository
+ReservationService ..> GymScheduleService : schedule
+ReservationService ..> Reservation : uses
+ReservationService ..> TimeSlot : uses
+GymScheduleService ..> TimeSlot : creates
+SqliteReservationRepository ..> Database : SQL
+SqliteReservationRepository ..> Reservation : maps
+SqliteReservationRepository ..> BookingStrategy : selects
+SqliteReservationRepository ..> WaitlistService : notifies
+WaitlistService ..> GymScheduleService : schedule
+WaitlistService ..> Database : SQL
+WaitlistService ..> Reservation : observes
+Reservation ..> Gym : gym
+Reservation ..> TrainingMode : mode
+@enduml

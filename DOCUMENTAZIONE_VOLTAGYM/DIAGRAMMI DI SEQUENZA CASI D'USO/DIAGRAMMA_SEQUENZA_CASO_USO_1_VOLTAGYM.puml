@@ -1,0 +1,122 @@
+@startuml
+!pragma teoz true
+title VOLTAGYM - Diagramma di sequenza\nCaso d'uso 1: prenotazione di gruppo
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam sequence {
+ ArrowColor #244A77
+ LifeLineBorderColor #71859D
+ ParticipantBorderColor #244A77
+ ParticipantBackgroundColor #E8EFF7
+ ActorBorderColor #244A77
+ GroupBorderColor #8097AF
+ GroupBackgroundColor #F4F7FB
+}
+autonumber
+actor "Collegiale\n(organizzatore)" as U
+boundary "CalendarView" as V
+control "CalendarController" as C
+control "ReservationService" as S
+control "GymScheduleService" as G
+entity "SqliteReservationRepository" as R
+control "GroupBookingStrategy" as B
+database "SQLite\n(voltagym.db)" as DB
+
+note over U,DB
+Precondizioni: collegiale autenticato; palestra, data, durata e slot selezionati.
+La data deve essere domani e la richiesta effettuata dalle 07:00 di oggi.
+Il limite e' una prenotazione per collegiale al giorno, su entrambe le palestre.
+end note
+
+U -> V: Sceglie GROUP e preme Prenota
+V -> C: evento summaryButton -> book()
+C -> V: getSelectedSlot(), getSelectedMode(), ...
+V --> C: slot, GROUP, palestra, data, email
+C -> S: getOtherStudents(email)
+S -> R: allStudentEmails()
+R -> DB: SELECT email FROM students
+DB --> R: elenco email
+R --> S: elenco email
+S --> C: elenco senza organizzatore
+C -> V: selectGroupMembers(elenco)
+V -> U: Mostra selezione dei collegiali
+alt Selezione annullata
+  U --> V: Annulla
+  V --> C: null
+  note over C: Nessuna prenotazione viene creata.
+else Selezione confermata
+  U --> V: Partecipanti scelti (1..3)
+  V --> C: lista partecipanti
+  C -> C: Aggiunge email organizzatore
+  C -> S: book(email, gym, date, slot, GROUP, participants)
+  S -> G: isBookingWindowOpen(date, now)
+  G --> S: true / false
+  alt Data o finestra temporale non valida
+    S --> C: IllegalStateException
+  else Data e orario validi
+    S -> R: findByStudent(email organizzatore)
+    R -> DB: SELECT prenotazioni tramite reservation_participants
+    DB --> R: prenotazioni organizzatore
+    R --> S: elenco
+    alt Organizzatore gia' prenotato o slot non valido
+      S --> C: Eccezione di validazione
+    else Verifiche iniziali superate
+      S -> G: getOpeningTime(), getClosingTime()
+      G --> S: 07:00, 23:30
+      S -> R: create(Reservation(GROUP), participants)
+      R -> R: trim, lowercase, distinct
+      R -> B ++: validate(numero partecipanti)
+      alt Numero partecipanti non tra 2 e 4
+        B --> R: IllegalArgumentException
+        deactivate B
+        R --> S: Eccezione
+        S --> C: Eccezione
+      else Numero valido (organizzatore incluso)
+        B --> R: OK
+        deactivate B
+        R -> DB: BEGIN IMMEDIATE
+        loop Per ogni partecipante (organizzatore incluso)
+          R -> DB: SELECT da students (registrazione)
+          DB --> R: presente / assente
+          R -> DB: SELECT prenotazioni per collegiale e data
+          DB --> R: gia' prenotato / libero
+        end
+        alt Partecipante non registrato o gia' prenotato
+          R -> DB: ROLLBACK
+          R --> S: Eccezione
+          S --> C: Eccezione
+        else Tutti i partecipanti idonei
+          R -> DB: SELECT sovrapposizioni per palestra, data e intervallo
+          DB --> R: conflitto / nessun conflitto
+          alt Slot occupato
+            R -> DB: ROLLBACK
+            R --> S: IllegalStateException
+            S --> C: Eccezione
+          else Slot disponibile
+            R -> DB: INSERT INTO reservations (..., mode='GROUP')
+            R -> DB: SELECT last_insert_rowid()
+            DB --> R: id prenotazione
+            loop Per ogni partecipante
+              R -> DB: INSERT INTO reservation_participants(id, email)
+            end
+            R -> DB: COMMIT
+            R --> S: Reservation creata
+            S --> C: Reservation creata
+            C -> V: showBookingSuccess(slot)
+            C -> S: getAvailableSlots(...)
+            S --> C: slot aggiornati
+            C -> V: showSlots(slot aggiornati)
+          end
+        end
+      end
+    end
+  end
+  opt Eccezione ricevuta dal Controller
+    C -> V: JOptionPane con errore; refresh()
+  end
+end
+note over U,DB
+Persistenza: reservations contiene l'organizzatore; reservation_participants
+contiene TUTTI i partecipanti. I controlli sono svolti nella transazione SQLite.
+end note
+@enduml
